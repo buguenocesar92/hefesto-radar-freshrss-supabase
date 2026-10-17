@@ -1,0 +1,1 @@
+Copie el certificado CA vigente del panel Supabase como ca.crt (0644, directorio 0755). Este kit exige TLS verify-full tanto en PHP como pg_dump/psql. No contiene certificados ficticios ni credenciales.

@@ -1,0 +1,73 @@
+name: hefesto-radar
+x-pg: &pg
+  PGHOST: ${DB_HOST:?Configurar host}
+  PGPORT: "5432"
+  PGDATABASE: postgres
+  PGUSER: ${DB_USER:-freshrss_app}
+  PGPASSWORD: ${DB_PASSWORD:?Configurar clave}
+  PGSSLMODE: verify-full
+  PGSSLROOTCERT: /certs/ca.crt
+  PGCONNECT_TIMEOUT: "15"
+services:
+  preflight:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      <<: *pg
+      SUPABASE_DEDICATED_CONFIRMED: ${SUPABASE_DEDICATED_CONFIRMED:-false}
+      SUPABASE_DATA_API_DISABLED: ${SUPABASE_DATA_API_DISABLED:-false}
+    volumes:
+      - ./certs:/certs:ro
+      - ./ops:/opt/hefesto:ro
+    entrypoint: [sh, /opt/hefesto/preflight.sh]
+  app:
+    image: freshrss/freshrss:1.30.1@sha256:48b63b9bc3d042a1301c32971b01af8841c7f059b452589c5bf77f475ba44c61
+    restart: unless-stopped
+    depends_on:
+      preflight:
+        condition: service_completed_successfully
+    entrypoint: [sh, /opt/hefesto/start.sh]
+    command: [sh, -c, '([ -z "$$CRON_MIN" ] || cron) && . /etc/apache2/envvars && exec apache2 -D FOREGROUND']
+    environment:
+      TZ: America/Santiago
+      CRON_MIN: "7,37"
+      FRESHRSS_ENV: production
+      LISTEN: "0.0.0.0:80"
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-0}
+      ENABLE_ACCESS_LOG: "0"
+      HEFESTO_PUBLIC_URL: ${PUBLIC_URL:?Configurar URL}
+      HEFESTO_BOOTSTRAP: "false"
+      HEFESTO_DB_HOST: ${DB_HOST}
+      HEFESTO_DB_USER: ${DB_USER:-freshrss_app}
+      HEFESTO_DB_PASSWORD: ${DB_PASSWORD}
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /certs/ca.crt
+    expose: ["80"]
+    volumes:
+      - data:/var/www/FreshRSS/data
+      - extensions:/var/www/FreshRSS/extensions
+      - ./certs:/certs:ro
+      - ./ops:/opt/hefesto:ro
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+  dbtools:
+    image: postgres:17-alpine
+    profiles: [tools]
+    environment: *pg
+    volumes:
+      - ./certs:/certs:ro
+      - ./ops:/opt/hefesto:ro
+  filetools:
+    image: postgres:17-alpine
+    profiles: [tools]
+    user: "0"
+    volumes:
+      - data:/data
+      - extensions:/extensions
+volumes:
+  data:
+    name: ${VOLUME_PREFIX:-hefesto-radar}-data
+  extensions:
+    name: ${VOLUME_PREFIX:-hefesto-radar}-extensions

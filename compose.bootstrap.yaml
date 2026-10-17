@@ -1,0 +1,11 @@
+services:
+  app:
+    restart: "no"
+    ports: ["127.0.0.1:8096:80"]
+    environment:
+      HEFESTO_BOOTSTRAP: "true"
+      HEFESTO_PUBLIC_URL: http://localhost:8096
+      CRON_MIN: ""
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Generar clave inicial}
+      FRESHRSS_INSTALL: --default-user admin --language es --title Hefesto-Radar --auth-type form --allow-anonymous false --allow-anonymous-refresh false --api-enabled false --allow-robots false --disable-update true
+      FRESHRSS_USER: --user admin --password ${ADMIN_PASSWORD} --language es --no-default-feeds
