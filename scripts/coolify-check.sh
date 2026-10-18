@@ -125,17 +125,16 @@ check_compose() {
         rc=1
     fi
 
-    # supabase-pg: DB_NAME y DB_SSLMODE deben verse en el render (variables de servicio o literales).
+    # supabase-pg: DB_NAME y DB_SSLMODE deben llegar al servicio web y al preflight.
     case "$app_type" in
         supabase-pg)
-            local rendered_text
-            rendered_text="$(cat "$rendered")"
-            if ! printf '%s\n' "$rendered_text" | grep -q 'mvp_prueba'; then
-                echo "$label: supabase-pg: DB_NAME=mvp_prueba no aparece en el render"
-                rc=1
-            fi
-            if ! printf '%s\n' "$rendered_text" | grep -q 'disable'; then
-                echo "$label: supabase-pg: DB_SSLMODE=disable no aparece en el render"
+            if ! jq -e '
+                .services.app.environment.HEFESTO_DB_NAME == "mvp_prueba"
+                and .services.app.environment.PGSSLMODE == "disable"
+                and .services.preflight.environment.PGDATABASE == "mvp_prueba"
+                and .services.preflight.environment.PGSSLMODE == "disable"
+            ' "$rendered" >/dev/null 2>&1; then
+                echo "$label: app: DB_NAME/DB_SSLMODE no llegan al servicio web"
                 rc=1
             fi
             ;;
