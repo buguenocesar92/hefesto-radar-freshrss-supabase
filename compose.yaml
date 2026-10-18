@@ -1,11 +1,10 @@
-name: hefesto-radar
 x-pg: &pg
   PGHOST: ${DB_HOST:?Configurar host}
   PGPORT: "5432"
-  PGDATABASE: postgres
+  PGDATABASE: ${DB_NAME:-postgres}
   PGUSER: ${DB_USER:-freshrss_app}
   PGPASSWORD: ${DB_PASSWORD:?Configurar clave}
-  PGSSLMODE: verify-full
+  PGSSLMODE: ${DB_SSLMODE:-verify-full}
   PGSSLROOTCERT: /certs/ca.crt
   PGCONNECT_TIMEOUT: "15"
 services:
@@ -38,10 +37,12 @@ services:
       HEFESTO_PUBLIC_URL: ${PUBLIC_URL:?Configurar URL}
       HEFESTO_BOOTSTRAP: "false"
       HEFESTO_DB_HOST: ${DB_HOST}
+      HEFESTO_DB_NAME: ${DB_NAME:-postgres}
       HEFESTO_DB_USER: ${DB_USER:-freshrss_app}
       HEFESTO_DB_PASSWORD: ${DB_PASSWORD}
-      PGSSLMODE: verify-full
-      PGSSLROOTCERT: /certs/ca.crt
+      DB_NAME: ${DB_NAME:-postgres}
+      DB_SSLMODE: ${DB_SSLMODE:-verify-full}
+      PGSSLMODE: ${DB_SSLMODE:-verify-full}
     expose: ["80"]
     volumes:
       - data:/var/www/FreshRSS/data
@@ -68,6 +69,4 @@ services:
       - extensions:/extensions
 volumes:
   data:
-    name: ${VOLUME_PREFIX:-hefesto-radar}-data
   extensions:
-    name: ${VOLUME_PREFIX:-hefesto-radar}-extensions

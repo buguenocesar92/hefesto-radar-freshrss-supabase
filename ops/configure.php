@@ -5,6 +5,8 @@ $host = getenv('HEFESTO_DB_HOST') ?: '';
 $user = getenv('HEFESTO_DB_USER') ?: '';
 $password = getenv('HEFESTO_DB_PASSWORD') ?: '';
 $url = getenv('HEFESTO_PUBLIC_URL') ?: '';
+$sslmode = getenv('HEFESTO_DB_SSLMODE') ?: (getenv('DB_SSLMODE') ?: 'verify-full');
+$dbname = getenv('HEFESTO_DB_NAME') ?: (getenv('DB_NAME') ?: 'postgres');
 if (!preg_match('/^[a-zA-Z0-9.-]+$/D', $host) || $password === '' || $user === '') {
     fwrite(STDERR, "Host o credenciales faltantes/invalidos\n"); exit(1);
 }
@@ -14,9 +16,12 @@ if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array(parse_url($url, PHP_URL_
 if (getenv('HEFESTO_BOOTSTRAP') !== 'true' && parse_url($url, PHP_URL_SCHEME) !== 'https') {
     fwrite(STDERR, "Produccion requiere HTTPS\n"); exit(1);
 }
-$params = 'sslmode=verify-full;sslrootcert=/certs/ca.crt;connect_timeout=15';
+$params = 'sslmode=' . $sslmode . ';connect_timeout=15';
+if ($sslmode === 'verify-full') {
+    $params .= ';sslrootcert=/certs/ca.crt';
+}
 try {
-    $pdo = new PDO('pgsql:host=' . $host . ';port=5432;dbname=postgres;' . $params, $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo = new PDO('pgsql:host=' . $host . ';port=5432;dbname=' . $dbname . ';' . $params, $user, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     if ($pdo->query('SELECT current_user')->fetchColumn() !== 'freshrss_app') {
         throw new RuntimeException('Rol incorrecto');
     }
@@ -27,7 +32,7 @@ $path = '/var/www/FreshRSS/data/config.php';
 $config = is_file($path) ? (require $path) : [];
 if (!is_array($config)) { throw new RuntimeException('Config nativa invalida'); }
 $config['db'] = ['type' => 'pgsql', 'host' => $host . ':5432', 'user' => $user, 'password' => $password,
-    'base' => 'postgres', 'prefix' => 'freshrss_', 'connection_uri_params' => $params, 'pdo_options' => []];
+    'base' => $dbname, 'prefix' => 'freshrss_', 'connection_uri_params' => $params, 'pdo_options' => []];
 $config['base_url'] = rtrim($url, '/');
 $config['title'] = 'Hefesto Radar';
 $config['default_user'] = 'admin';
