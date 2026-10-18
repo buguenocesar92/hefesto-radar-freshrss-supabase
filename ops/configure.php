@@ -7,6 +7,9 @@ $password = getenv('HEFESTO_DB_PASSWORD') ?: '';
 $url = getenv('HEFESTO_PUBLIC_URL') ?: '';
 $sslmode = getenv('HEFESTO_DB_SSLMODE') ?: (getenv('DB_SSLMODE') ?: 'verify-full');
 $dbname = getenv('HEFESTO_DB_NAME') ?: (getenv('DB_NAME') ?: 'postgres');
+if (!preg_match('/^[A-Za-z0-9_]{1,63}$/D', $dbname) || !in_array($sslmode, ['disable','allow','prefer','require','verify-ca','verify-full'], true)) {
+    fwrite(STDERR, "DB_NAME o DB_SSLMODE invalidos\n"); exit(1);
+}
 if (!preg_match('/^[a-zA-Z0-9.-]+$/D', $host) || $password === '' || $user === '') {
     fwrite(STDERR, "Host o credenciales faltantes/invalidos\n"); exit(1);
 }
@@ -17,7 +20,7 @@ if (getenv('HEFESTO_BOOTSTRAP') !== 'true' && parse_url($url, PHP_URL_SCHEME) !=
     fwrite(STDERR, "Produccion requiere HTTPS\n"); exit(1);
 }
 $params = 'sslmode=' . $sslmode . ';connect_timeout=15';
-if ($sslmode === 'verify-full') {
+if (in_array($sslmode, ['verify-ca', 'verify-full'], true)) {
     $params .= ';sslrootcert=/certs/ca.crt';
 }
 try {
