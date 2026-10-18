@@ -49,6 +49,12 @@ services:
       - extensions:/var/www/FreshRSS/extensions
       - ./certs:/certs:ro
       - ./ops:/opt/hefesto:ro
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 80) ? 0 : 1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     logging:
       options:
         max-size: 10m
