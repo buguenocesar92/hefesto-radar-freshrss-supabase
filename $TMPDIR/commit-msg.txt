@@ -1,0 +1,11 @@
+Reordena el flag -p en el bootstrap de Coolify
+
+El comando documentado llevaba -p antes de 'docker compose', así que el
+shell lo interpretaba como flag propio y docker compose no recibía el
+nombre del proyecto que Coolify asignó al clon. Sin ese nombre, los
+volúmenes data y extensions creados por compose.bootstrap.yaml no
+coincidían con los del servicio app que Coolify monitorea.
+
+Reescribe el comando como 'docker compose -p <proyecto-coolify> -f
+compose.bootstrap.yaml up' y agrega el 'down' correspondiente con el
+mismo orden de flags.
