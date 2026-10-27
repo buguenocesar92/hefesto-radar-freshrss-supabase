@@ -1,25 +1,94 @@
 #!/usr/bin/env python3
-import hashlib,json,os,subprocess,sys,tarfile
-from pathlib import Path,PurePosixPath
-root=Path(__file__).resolve().parents[1];os.chdir(root)
-if len(sys.argv)!=2:raise SystemExit('Uso: python3 scripts/restore_files.py /ruta/respaldo')
-p=Path(sys.argv[1]).resolve();m=json.loads((p/'manifest.json').read_text())
-if m.get('product')!='hefesto-radar' or m.get('version')!='1.30.1' or m.get('status')!='completed':raise SystemExit('Manifest invalido')
-for name in ['data','extensions']:
-    a=p/(name+'.tar.gz')
-    with a.open('rb') as f:
-        if hashlib.file_digest(f,'sha256').hexdigest()!=m['sha256'][a.name]:raise SystemExit('Hash incorrecto')
-    with tarfile.open(a) as tf:
-        seen=set()
-        for member in tf:
-            path=PurePosixPath(member.name)
-            if path.is_absolute() or '..' in path.parts or not(member.isfile() or member.isdir()) or str(path) in seen:raise SystemExit('Ruta/tipo no admitido')
-            seen.add(str(path))
-def dc(*a,**kw):return subprocess.run(['docker','compose',*a],check=True,**kw)
-if dc('ps','--status','running','-q','app',capture_output=True,text=True).stdout.strip():raise SystemExit('Detener app antes de restaurar')
-for name in ['data','extensions']:
-    found=dc('run','--rm','--no-deps','-T','--entrypoint','find','filetools','/'+name,'-mindepth','1','-maxdepth','1',capture_output=True,text=True).stdout.strip()
-    if found:raise SystemExit('Volumen no vacio: '+name)
-for name in ['data','extensions']:
-    with (p/(name+'.tar.gz')).open('rb') as f:dc('run','--rm','--no-deps','-T','--entrypoint','tar','filetools','-xzf','-','-C','/'+name,stdin=f)
-print('Volumenes restaurados. Al arrancar, se ajustaran permisos y credenciales al .env destino.')
+"""Restauracion de los volumenes con material personal de hefesto-radar (FreshRSS + PostgreSQL de Supabase).
+
+El volumen viaja cifrado con age: la clave privada (AGE_IDENTITY_FILE) es un
+insumo externo, no se genera aqui. Exige destino vacio.
+"""
+import os
+import subprocess
+import sys
+import tarfile
+import tempfile
+from pathlib import Path, PurePosixPath
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from respaldo_contrato import (RespaldoError, auditar, descifrar_con_age, ejecutar,
+                               ejecutar_check, escribir_informe, opciones_restore)
+
+SOFTWARE = "hefesto-radar"
+VERSION = "1.30.1"
+DATABASE = "postgresql"
+RAIZ = Path(__file__).resolve().parents[1]
+os.chdir(RAIZ)
+os.umask(0o077)
+PROHIBIDOS = ["data.tar.gz", "extensions.tar.gz"]
+VOLUMENES = [
+    {
+        "nombre": "data",
+        "artefacto": "data.tar.gz",
+        "ruta": "/data"
+    },
+    {
+        "nombre": "extensions",
+        "artefacto": "extensions.tar.gz",
+        "ruta": "/extensions"
+    }
+]
+
+
+def dc(*args, **kw):
+    return subprocess.run(["docker", "compose", *args], check=True, **kw)
+
+
+def main():
+    modo, origen = opciones_restore(sys.argv[1:])
+    origen = Path(origen).resolve()
+    ejecutar_check(str(origen), SOFTWARE, VERSION, DATABASE, prohibidos=PROHIBIDOS)
+    if modo == "dry-run":
+        print("Simulacion: el respaldo es integro y no se escribio nada.")
+        print("Para restaurar de verdad: --confirmar CONFIRMAR_RESTAURACION")
+        return 0
+    if dc("ps", "--status", "running", "-q", "app",
+          capture_output=True, text=True).stdout.strip():
+        raise RespaldoError("app esta activa en el destino; detenerla antes de restaurar", 5)
+    if not (RAIZ / ".env").is_file():
+        raise RespaldoError("Preparar el .env del destino: no viaja en el respaldo", 5)
+    for vol in VOLUMENES:
+        encontrado = dc("run", "--rm", "--no-deps", "-T", "--entrypoint", "find",
+                        "filetools", vol["ruta"], "-mindepth", "1", "-maxdepth", "1",
+                        capture_output=True, text=True).stdout.strip()
+        if encontrado:
+            raise RespaldoError("El volumen " + vol["nombre"] +
+                                " del destino no esta vacio; usar destino nuevo", 5)
+    for vol in VOLUMENES:
+        cifrado = origen / (vol["artefacto"] + ".age")
+        if not cifrado.is_file():
+            raise RespaldoError("El respaldo no trae " + vol["artefacto"] +
+                                " cifrado: hace falta el receptor age", 5)
+        with tempfile.TemporaryDirectory(prefix="hefesto-restore-") as d:
+            plano = Path(d) / vol["artefacto"]
+            descifrar_con_age(cifrado, plano)
+            with tarfile.open(plano) as tf:
+                for member in tf:
+                    ruta = PurePosixPath(member.name)
+                    if (ruta.is_absolute() or ".." in ruta.parts
+                            or not (member.isfile() or member.isdir())):
+                        raise RespaldoError("Ruta o tipo no admitido: " + member.name, 5)
+            with plano.open("rb") as f:
+                argumentos = ["run", "--rm", "--no-deps", "-T"]
+                if False:
+                    argumentos += ["--user", "0"]
+                argumentos += ["--entrypoint", "tar", "filetools", "-xzf", "-",
+                               "-C", vol["ruta"]]
+                dc(*argumentos, stdin=f)
+
+    escribir_informe(origen, software=SOFTWARE, version=VERSION, database=DATABASE,
+                     modo="confirmado", resultado="volumenes-restaurados", destino=str(RAIZ))
+    auditar(RAIZ, operacion="restore", kit=SOFTWARE, origen=str(origen), destino=str(RAIZ),
+            resultado="volumenes-restaurados")
+    print("Volumenes restaurados y propietario ajustado.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(ejecutar(main))
